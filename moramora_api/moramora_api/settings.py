@@ -1,10 +1,16 @@
 import os
+import sys
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+# The detection prototype is a sibling package of the Django project.
+_REPOSITORY_ROOT = str(BASE_DIR.parent)
+if _REPOSITORY_ROOT not in sys.path:
+    sys.path.insert(0, _REPOSITORY_ROOT)
+
 load_dotenv(BASE_DIR / ".env")
 
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() in {"1", "true", "yes"}
@@ -21,6 +27,7 @@ ALLOWED_HOSTS = [
 ]
 
 INSTALLED_APPS = [
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -28,8 +35,10 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "corsheaders",
+    "channels",
     "rest_framework",
     "authentication",
+    "detection_ws",
 ]
 
 MIDDLEWARE = [
@@ -61,6 +70,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "moramora_api.wsgi.application"
+ASGI_APPLICATION = "moramora_api.asgi.application"
 
 if os.getenv("DB_ENGINE", "sqlite").lower() in {"postgres", "postgresql"}:
     DATABASES = {
@@ -120,6 +130,15 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "authentication.exceptions.api_exception_handler",
 }
 
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")],
+        },
+    },
+}
+
 SIMPLE_JWT = {
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
@@ -138,3 +157,20 @@ CORS_ALLOWED_ORIGINS = [
     ).split(",")
     if origin.strip()
 ]
+
+WEBSOCKET_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "WEBSOCKET_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000,"
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
+
+WEBSOCKET_MAX_IMAGE_SIZE = int(
+    os.getenv("WEBSOCKET_MAX_IMAGE_SIZE", str(5 * 1024 * 1024))
+)
+WEBSOCKET_MAX_IMAGE_PIXELS = int(os.getenv("WEBSOCKET_MAX_IMAGE_PIXELS", "20000000"))
+DAPHNE_WEBSOCKET_MAX_MESSAGE_SIZE = (WEBSOCKET_MAX_IMAGE_SIZE + 2) // 3 * 4 + 4096
+DAPHNE_WEBSOCKET_MAX_FRAME_SIZE = DAPHNE_WEBSOCKET_MAX_MESSAGE_SIZE

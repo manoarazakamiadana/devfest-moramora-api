@@ -1,31 +1,33 @@
 
-from huggingface_hub import hf_hub_download
-from ultralytics import YOLO
+from pathlib import Path
 
-# Télécharger automatiquement le modèle
-weights = hf_hub_download(
-    repo_id="jashwanthpeddisetty0712/violation-detection-yolov8",
-    filename="best.pt"
-)
+if __package__:
+    from .inference import load_model
+else:
+    from inference import load_model
 
-# Charger le modèle
-model = YOLO(weights)
 
-print("IA chargée avec succès !")
-print("Classes détectées :", model.names)
+def main():
+    prototype_dir = Path(__file__).resolve().parent
+    model = load_model()
 
-# Tester sur une image
-results = model.predict(
-    source="Image0775_jpg.rf.zixLWQaadRkNFH9RAH1P.jpg",
-    conf=0.5,
-    save=True
-)
+    print("IA chargée avec succès !")
+    print("Classes détectées :", model.names)
 
-results = model.predict(
-    source="test.mp4",
-    conf=0.5,
-    save=True,
-    show=True
-)
+    model.predict(
+        source=str(prototype_dir / "Image0775_jpg.rf.zixLWQaadRkNFH9RAH1P.jpg"),
+        conf=0.5,
+        save=True,
+    )
+    model.predict(
+        source=str(prototype_dir / "test.mp4"),
+        conf=0.5,
+        save=True,
+        show=True,
+    )
 
-print("Analyse terminée !")
+    print("Analyse terminée !")
+
+
+if __name__ == "__main__":
+    main()

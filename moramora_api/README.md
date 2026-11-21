@@ -102,3 +102,70 @@ python manage.py test authentication
 Les tests couvrent les quatre fonctionnalités, les mots de passe, les comptes
 inactifs, l'absence d'expiration des JWT et les révocations individuelle et
 globale.
+
+## WebSocket de détection
+
+Démarrez Redis avant le serveur (par exemple avec Docker) :
+
+```powershell
+docker run --rm -p 6379:6379 redis:7-alpine
+python manage.py runserver
+```
+
+Le WebSocket est disponible à `ws://localhost:8000/ws/detection/`. Dans un
+navigateur, transmettez le JWT obtenu au login comme second sous-protocole
+(`bearer` est le sous-protocole sélectionné par le serveur) :
+
+```javascript
+const socket = new WebSocket(
+  "ws://localhost:8000/ws/detection/",
+  ["bearer", accessToken]
+);
+socket.onopen = () => {
+  socket.send(JSON.stringify({
+    type: "image",
+    image: base64JpegOrPng
+  }));
+};
+socket.onmessage = ({ data }) => console.log(JSON.parse(data));
+```
+
+Un client non navigateur peut également envoyer le JWT dans
+`Authorization: Bearer <JWT>`. Les deux modes vérifient la signature, le compte
+actif et le registre de révocation existant. Les connexions sans origine ou
+dont l'origine n'est pas dans `WEBSOCKET_ALLOWED_ORIGINS` sont refusées. En
+production, utilisez `wss://` et limitez cette liste aux origines de confiance.
+Seuls les JWT transmis par sous-protocole ou par l'en-tête Authorization sont
+acceptés ; un JWT placé dans l'URL n'est pas accepté.
+
+Envoyez soit une trame binaire JPEG/PNG, soit un message JSON
+`{"type":"image","image":"<base64>"}`. Une URL de données `data:image/jpeg;base64,...`
+ou `data:image/png;base64,...` est également acceptée. La limite par défaut est
+5 Mio et 20 mégapixels. Daphne applique également une limite de trame et de
+message calculée à partir de `WEBSOCKET_MAX_IMAGE_SIZE`. Chaque image valide
+reçoit un message
+`detection_result` comprenant l'image annotée (JPEG Base64) et les boîtes,
+classes et confiances produites par YOLO. Si le modèle a détecté au moins une
+boîte, un message `alert` suit le résultat. Les erreurs sont transmises comme
+messages `error`; une image n'est pas mise en file si le modèle traite déjà une
+autre requête, le client peut réessayer.
+
+Le moteur existant `violation/inference.py` charge une seule fois les mêmes
+poids Hugging Face que le prototype. Le script `violation/main.py` continue de
+lancer ses démonstrations d'image et de vidéo lorsqu'il est exécuté directement ;
+il ne démarre plus de téléchargement ou de prédiction lorsqu'il est importé.
+
+Pour tester :
+
+```powershell
+python manage.py test detection_ws authentication
+```
+
+Le test ci-dessous exerce le vrai modèle YOLO avec l'image du prototype
+(télécharge les poids Hugging Face s'ils ne sont pas déjà en cache) :
+
+```powershell
+$env:RUN_MODEL_INTEGRATION_TESTS = "1"
+python manage.py test detection_ws.tests.DetectionWebSocketTests.test_real_model_through_websocket
+Remove-Item Env:RUN_MODEL_INTEGRATION_TESTS
+```
